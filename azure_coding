@@ -1,0 +1,400 @@
+------------  Exercise - Create Azure storage resources
+az storage account create \
+  --kind StorageV2 \
+  --resource-group learn-52278ffd-a5f5-4afe-a598-53b722d424d3 \
+  --location centralus \
+  --name stjack1azurestorage  
+  
+  --1. storage account name only can use lower case letter and digit number!!!
+       3-24 length
+
+----创建container！！！  
+az storage container create -h  
+
+
+------------------Exercise - Configure and initialize the client library---------
+1.关键点，需要创建app name，container这些！！！
+2.Run code in Cloud shell
+git clone https://github.com/MicrosoftDocs/mslearn-store-data-in-azure.git
+cd mslearn-store-data-in-azure/store-app-data-with-azure-blob-storage/src/start
+--启动cloud代码编辑器
+code .
+
+1) Add the NuGet package
+
+	dotnet add package WindowsAzure.Storage
+	dotnet restore
+2) Configure -> Startup.cs 文件！
+
+  
+3)  Init
+using System.Linq;
+using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Blob;
+public Task Initialize()
+{
+    CloudStorageAccount storageAccount = CloudStorageAccount.Parse(storageConfig.ConnectionString);
+    CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
+    CloudBlobContainer container = blobClient.GetContainerReference(storageConfig.FileContainerName);
+    return container.CreateIfNotExistsAsync();
+}
+
+  
+  
+------------- Exercise - Get blob references  ----------------------
+1. ICloudBlob object --> requesting CloudBlobContainer   
+2. Call one of the GetXXXReference methods on a CloudBlobContainer to get an ICloudBlob by name.
+
+
+3. GetBlockBlobReference, GetAppendBlobReference, or GetPageBlobReference)
+
+	BlobContinuationToken continuationToken = null;
+	BlobResultSegment resultSegment = null;
+
+	do
+	{
+		resultSegment = await container.ListBlobsSegmentedAsync(continuationToken);
+
+		// Do work here on resultSegment.Results
+
+		continuationToken = resultSegment.ContinuationToken;
+	} while (continuationToken != null);
+	
+4.Processing list results
+
+	// Get all blobs
+	var allBlobs = resultSegment.Results.OfType<ICloudBlob>();
+	// Get only block blobs
+	var blockBlobs = resultSegment.Results.OfType<CloudBlockBlob>();
+
+5. StorageAccount->stjack1azurestorage ->Access keys
+
+-- DefaultEndpointsProtocol=https;AccountName=stjack1azurestorage;AccountKey=X57ywxy3alnJJVyLoOSJDzvSC/wz0Mp5BSoZWYjnVYVl0xWM8lD3uYmiLmVgw0bTzBLVY9RPWbeYuIypGIhyLg==;EndpointSuffix=core.windows.net
+
+	public async Task<IEnumerable<string>> GetNames()
+	{
+		List<string> names = new List<string>();
+		---ConnectionString -> go to storage account to find out !!
+		--
+		CloudStorageAccount storageAccount = CloudStorageAccount.Parse(storageConfig.ConnectionString);
+		CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
+		CloudBlobContainer container = blobClient.GetContainerReference(storageConfig.FileContainerName);
+
+		BlobContinuationToken continuationToken = null;
+		BlobResultSegment resultSegment = null;
+
+		do
+		{
+			resultSegment = await container.ListBlobsSegmentedAsync(continuationToken);
+
+			// Get the name of each blob.
+			names.AddRange(resultSegment.Results.OfType<ICloudBlob>().Select(b => b.Name));
+
+			continuationToken = resultSegment.ContinuationToken;
+		} while (continuationToken != null);
+
+		return names;
+	}
+
+
+--------------   Exercise - Blob uploads and downloads        -----------------------------
+1. ICloudBlob objects have Upload and Download methods that support byte arrays, streams, and files as sources and targets. 
+
+2. CloudBlockBlob supports uploading and downloading strings with UploadTextAsync and DownloadTextAsync.
+
+3. Create a new Blob -> upload
+
+public Task Save(Stream fileStream, string name)
+{
+    CloudStorageAccount storageAccount = CloudStorageAccount.Parse(storageConfig.ConnectionString);
+    CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
+    CloudBlobContainer container = blobClient.GetContainerReference(storageConfig.FileContainerName);
+    CloudBlockBlob blockBlob = container.GetBlockBlobReference(name);
+    return blockBlob.UploadFromStreamAsync(fileStream);
+}
+
+
+---Download 
+public Task<Stream> Load(string name)
+{
+    CloudStorageAccount storageAccount = CloudStorageAccount.Parse(storageConfig.ConnectionString);
+    CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
+    CloudBlobContainer container = blobClient.GetContainerReference(storageConfig.FileContainerName);
+    return container.GetBlobReference(name).OpenReadAsync();
+}
+
+--Show connection string
+stjack_xp@Azure:~$ az storage account show-connection-string --name stjack1azurestorage
+{
+  "connectionString": "DefaultEndpointsProtocol=https;EndpointSuffix=core.windows.net;AccountName=stjack1azurestorage;AccountKey=X57ywxy3alnJJVyLoOSJDzvSC/wz0Mp5BSoZWYjnVYVl0xWM8lD3uYmiLmVgw0bTzBLVY9RPWbeYuIypGIhyLg=="
+}
+
+--Deployment
+
+az appservice plan create --name blob-exercise-plan --resource-group learn-52278ffd-a5f5-4afe-a598-53b722d424d3 --sku FREE --location centralus
+
+az webapp create --name <your-unique-app-name> --plan blob-exercise-plan --resource-group learn-52278ffd-a5f5-4afe-a598-53b722d424d3
+CONNECTIONSTRING=$(az storage account show-connection-string --name <your-unique-storage-account-name> --output tsv)
+
+az webapp config appsettings set --name <your-unique-app-name> --resource-group learn-52278ffd-a5f5-4afe-a598-53b722d424d3 --settings AzureStorageConfig:ConnectionString=$CONNECTIONSTRING AzureStorageConfig:FileContainerName=files
+
+
+------------------------Connect an app to Azure Storage -------------------
+## 1.App init 
+ 
+ npm init -y 
+ 
+ ## use npm to initialize a new Node.js app. This will create a package.json file containing metadata that describes the app.
+ ## Running index.js using node.js
+ stjack_xp@Azure:~/PhotoSharingApp$ node index.js
+  
+##2.  Create azure storage account
+
+az storage account create \
+        --resource-group learn-204e8288-9bb4-4251-b4c6-f60a23d3cace \
+        --kind StorageV2 \
+        --sku Standard_LRS \
+        --access-tier Cool \
+        --name stjack2azure
+
+
+############## ----------------   Interact with the Azure Storage APIs   
+## 3. Client and RESTFul API
+
+##  Client libraries can save a significant amount of work for application developers because the API is tested and it often provides nicer wrappers around the data models sent and received by the REST API.
+
+   ## 3.1  Add the Azure Storage package
+   
+   npm install azure-storage --save
+   
+   ##  3.2 账号key的安全性 Typically, storage account connectivity information is stored within an environment variable, database, or configuration file.  
+     .env 存储connectionstring
+     
+	 AZURE_STORAGE_CONNECTION_STRING=<value>
+	 
+	 az storage account show-connection-string \
+		--resource-group learn-204e8288-9bb4-4251-b4c6-f60a23d3cace \
+		--query connectionString \
+		--name stjack2azure
+		
+   ##  3.3  To verify the container: 
+   ##   	storage account->All Resources -> Blob services  ->container -> Blob
+   
+
+############## -----------  Work with relational data in Azure --------- ##############
+###		1. server admin login --> not using admin, sa reserved word
+#		stjack/K4....j9
+# 2. Default access -> no access!!!
+#       
+# 3. Get information about AZURE SQL db    (NO adding  .database.windows.net  !!!  )  
+#
+#   stjack_xp@Azure:~$ az configure --defaults group=learn-1635d204-efba-4ae6-bbad-08c67953660b sql-server=stjack1sqldb
+#   stjack_xp@Azure:~$ az sql db list | jq '[.[] | {name: .name}]'
+#   stjack_xp@Azure:~$ az sql db show  --name stjack1sqldb    
+#   az sql db show --name stjack1sqldb | jq '{name: .name, maxSizeBytes: .maxSizeBytes, status: .status}'    
+#       
+#       
+# 4.    Connect to your database      
+#   az sql db show-connection-string --client sqlcmd --name stjack1sqldb    
+# "sqlcmd -S tcp:stjack1sqldb.database.windows.net,1433 -d stjack1sqldb -U stjack -P K4hvdq9tj9 -N -l30"      
+#       
+#       
+#       
+# 5. Azure SQL database elastic pool 
+#	1)     az sql db create and specify the pool name using the --elastic-pool-name parameter. 
+#
+#   2) Steps    先创建一个基本的FitnessSQLServer-29250 SQL DB,或者使用现有的作为admin
+## create parameters
+ADMIN_LOGIN="ServerAdmin"
+RESOURCE_GROUP=learn-5789b87e-a448-43b0-94f4-9739c6f39deb
+SERVERNAME=FitnessSQLServer-$RANDOM
+LOCATION=westeurope
+PASSWORD=K4hvdq9tj9
+
+## Create elastic pool
+az sql server create \
+--name $SERVERNAME \
+--resource-group $RESOURCE_GROUP \
+--location $LOCATION \
+--admin-user $ADMIN_LOGIN \
+--admin-password $PASSWORD
+
+##Add a database named FitnessVancouverDB to FitnessSQLServer-29250
+az sql db create \
+--resource-group $RESOURCE_GROUP \
+--server $SERVERNAME \
+--name FitnessParisDB
+#       
+#  ##############   Create an Azure Database for PostgreSQL server     ###################
+#
+#
+#   https://docs.microsoft.com/en-gb/azure/postgresql/concepts-pricing-tiers    
+#       
+   !!! Retention days: 7-35  !!!!
+  
+#   stjack_xp@Azure:~$ serverName=wingtiptoys-$RANDOM
+stjack_xp@Azure:~$ userName=azureuser
+stjack_xp@Azure:~$ az postgres server create \
+	--name poststjack1 \
+	--resource-group learn-831a6c11-7e92-4eb2-9d29-a8eb22d74e83 \
+	--location westeurope  \
+	--sku-name B_Gen5_1  \
+	--storage-size 5120 \
+	--backup-retention 7 \
+	--version 10 \
+	--admin-user $userName \
+	--admin-password K4hvdq9tj9
+#       
+#       
+#  az postgres server firewall-rule create \
+  --resource-group learn-831a6c11-7e92-4eb2-9d29-a8eb22d74e83 \
+  --server <server-name> \
+  --name AllowAll \
+  --start-ip-address 0.0.0.0 \
+  --end-ip-address 255.255.255.255
+  
+## Remove firewall rules
+# az postgres server firewall-rule delete \
+  --name AllowAll \
+  --resource-group learn-831a6c11-7e92-4eb2-9d29-a8eb22d74e83 \
+  --server-name <server-name>     
+#       
+##########    Connect to PostgreSQL server
+#
+#  
+# psql --host=<server-name>.postgres.database.azure.com \
+  --username=<admin-user>@<server-name> \
+  --dbname=<database>      
+#       
+#       
+#    Create an Azure SQL Database   
+# # Set an admin login and password for your database
+export ADMINLOGIN='sqldbjack19'
+export PASSWORD='Kl4h78990'
+# Set the logical SQL server name. We'll add a random string as it needs to be globally unique.
+export SERVERNAME=server$RANDOM
+export RESOURCEGROUP=learn-136e31ff-c54e-4aed-b655-cfbcf2200207
+# Set the location, we'll pull the location from our resource group.
+export LOCATION=$(az group show --name $RESOURCEGROUP | jq -r '.location')      
+#       
+#     Run the following command to create a new Azure SQL Database logical server.  
+# az sql server create \
+    --name $SERVERNAME \
+    --resource-group $RESOURCEGROUP \
+    --location $LOCATION \
+    --admin-user $ADMINLOGIN \
+    --admin-password "$PASSWORD"      
+#
+#       
+#    Run the following to create the database called marketplaceDb
+#   
+#   az sql db create --resource-group $RESOURCEGROUP \
+    --server $SERVERNAME \
+    --name marketplaceDb \
+    --sample-name AdventureWorksLT \
+    --service-objective Basic    
+#       
+#   Get connection string
+#    
+#  az sql db show-connection-string --client sqlcmd --name marketplaceDb --server $SERVERNAME | jq -r
+
+# sqlcmd -S tcp:server3984.database.windows.net,1433 -d marketplaceDb -U $ADMINLOGIN -P $PASSWORD -N -l 30
+### 修改防火墙：  Client with IP address '40.69.72.112' is not allowed to access the server. 
+     
+#       
+#      Create and configure a Linux virtual machine 
+#       
+#  az vm create \
+  --resource-group $RESOURCEGROUP \
+  --name appServer \
+  --image UbuntuLTS \
+  --size Standard_DS2_v2 \
+  --generate-ssh-keys     
+#       
+# "privateIpAddress": "10.0.0.4", \
+  "publicIpAddress": "104.42.234.206",\
+  "resourceGroup": "learn-136e31ff-c54e-4aed-b655-cfbcf2200207",      
+#       
+echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bash_profile
+echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+source ~/.bashrc
+curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+curl https://packages.microsoft.com/config/ubuntu/16.04/prod.list | sudo tee /etc/apt/sources.list.d/msprod.list
+sudo apt-get update
+
+## 安装UnixODBD ，让Unix用户可以支持SQL Database
+
+sudo ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev     
+
+#  不同的规则是互斥的     
+#     Server-level firewall rules\
+			Allow access to Azure services\
+			IP address rules\
+	==> when you have Azure VMs that need to access your database.\			
+			Virtual network rules\	
+			
+#	Database-level firewall rules\
+			IP address rules  
+			
+#   ==Login to SQL Database then execute!!
+
+#   EXECUTE sp_set_database_firewall_rule N'My Firewall Rule', '40.112.128.214', '40.112.128.214'
+#
+#   
+#   sqlcmd -S tcp:server3984.database.windows.net,1433 -d marketplaceDb -U 'sqldbjack19' -P 'Kl4h78990' -N -l 30
+#   
+#   
+#  If you want to use Azure AD authentication, you must create another server admin called the "Azure AD admin," which is allowed to administer Azure AD users and groups. 
+#   
+#   
+#   Azure SQL Database enforces encryption (SSL/TLS) at all times for all connections
+#   
+#   
+#                    Work with NoSQL data in Azure Cosmos DB 
+#
+#  1.Cosmos DB network security  - All public access by default!!!! 
+#   
+#   
+#   
+#   
+#   
+#   
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+# 
